@@ -149,10 +149,10 @@ impl QueryDispatcher for DefaultQueryDispatcher {
 
         if let (Some(b1), Some(b2)) = (ball1, ball2) {
             Ok(query::details::contact_ball_ball(pos12, b1, b2, prediction))
-        // } else if let (Some(c1), Some(c2)) = (shape1.as_cuboid(), shape2.as_cuboid()) {
-        //     Ok(query::details::contact_cuboid_cuboid(
-        //         pos12, c1, c2, prediction,
-        //     ))
+        } else if let (Some(c1), Some(c2)) = (shape1.as_cuboid(), shape2.as_cuboid()) {
+            Ok(query::details::contact_cuboid_cuboid(
+                pos12, c1, c2, prediction,
+            ))
         } else if let (Some(p1), Some(s2)) =
             (shape1.as_shape::<HalfSpace>(), shape2.as_support_map())
         {
