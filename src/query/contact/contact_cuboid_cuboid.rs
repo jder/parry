@@ -1,10 +1,13 @@
 use crate::math::{Pose, Real};
+use approx::AbsDiffEq;
 #[cfg(feature = "dim2")]
 use crate::query::details::clip_segment_segment_with_normal;
 #[cfg(feature = "dim3")]
 use crate::query::PointQuery;
 use crate::query::{sat, Contact};
 use crate::shape::Cuboid;
+#[cfg(feature = "dim3")]
+use crate::shape::SupportMap;
 
 /// Contact between two cuboids.
 #[inline]
@@ -43,26 +46,72 @@ pub fn contact_cuboid_cuboid(
         let normal2 = pos12.rotation.inverse() * -best_sep.1;
         let feature1 = cuboid1.support_feature(best_sep.1);
         let feature2 = cuboid2.support_feature(normal2);
-        let (clip_a, clip_b) = clip_segment_segment_with_normal(
+
+        if let Some((clip_a, clip_b)) = clip_segment_segment_with_normal(
             (feature1.vertices[0], feature1.vertices[1]),
             (pos12 * feature2.vertices[0], pos12 * feature2.vertices[1]),
             best_sep.1,
-        )?;
-        let dist_a = (clip_a.1 - clip_a.0).dot(best_sep.1);
-        let dist_b = (clip_b.1 - clip_b.0).dot(best_sep.1);
-        let (point1, point2_world, dist) = if dist_a <= dist_b {
-            (clip_a.0, clip_a.1, dist_a)
-        } else {
-            (clip_b.0, clip_b.1, dist_b)
-        };
+        ) {
+            let dist_a = (clip_a.1 - clip_a.0).dot(best_sep.1);
+            let dist_b = (clip_b.1 - clip_b.0).dot(best_sep.1);
+            let (point1, point2_world, dist) = if dist_a <= dist_b {
+                (clip_a.0, clip_a.1, dist_a)
+            } else {
+                (clip_b.0, clip_b.1, dist_b)
+            };
 
-        return Some(Contact::new(
-            point1,
-            pos12.inverse_transform_point(point2_world),
-            best_sep.1,
-            normal2,
-            dist,
-        ));
+            if dist <= prediction {
+                return Some(Contact::new(
+                    point1,
+                    pos12.inverse_transform_point(point2_world),
+                    best_sep.1,
+                    normal2,
+                    dist,
+                ));
+            }
+        }
+
+        use crate::query::{ClosestPoints, details};
+
+        // Face clipping fixes penetrating half-turn cases, but separated corner cases
+        // still need the generic support-map closest-points query to preserve the
+        // "within margin" semantics of `contact`.
+        return match details::closest_points_support_map_support_map(
+            pos12,
+            cuboid1,
+            cuboid2,
+            prediction,
+        ) {
+            ClosestPoints::Disjoint => None,
+            ClosestPoints::WithinMargin(point1, point2) => {
+                let delta = pos12.transform_point(point2) - point1;
+                let (normal1, dist) = delta.normalize_and_length();
+                let normal1 = if dist <= Real::default_epsilon() {
+                    best_sep.1
+                } else {
+                    normal1
+                };
+
+                if dist > prediction {
+                    None
+                } else {
+                    Some(Contact::new(
+                        point1,
+                        point2,
+                        normal1,
+                        pos12.rotation.inverse() * -normal1,
+                        dist,
+                    ))
+                }
+            }
+            ClosestPoints::Intersecting => Some(Contact::new(
+                feature1.vertices[0],
+                pos12.inverse_transform_point(feature1.vertices[0]),
+                best_sep.1,
+                normal2,
+                0.0,
+            )),
+        };
     }
 
     #[cfg(feature = "dim3")]

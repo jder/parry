@@ -2,6 +2,7 @@ mod aabb_scale;
 mod ball_ball_toi;
 mod ball_cuboid_contact;
 mod cuboid_cuboid_contact;
+mod cuboid_cuboid_contact_search;
 mod epa2;
 mod epa_convergence;
 mod ray_cast;
